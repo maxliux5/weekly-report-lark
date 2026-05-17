@@ -1,0 +1,11 @@
+{
+  "weekly_report_doc_name": "我的周报汇总",
+  "weekly_report_doc_url": "https://your-org.larkoffice.com/docx/XXXXXXXX",
+  "output_format": "feishu",
+  "auto_write_back": true,
+  "ownership_labels": {
+    "lead": "我主导/负责的",
+    "participate": "我参与评审/同步的",
+    "follow_up": "后续需要我跟进的"
+  }
+}
