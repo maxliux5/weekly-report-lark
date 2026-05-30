@@ -1,6 +1,6 @@
 {
-  "weekly_report_doc_name": "我的周报汇总",
-  "weekly_report_doc_url": "https://your-org.larkoffice.com/docx/XXXXXXXX",
+  "weekly_report_doc_name": "周报汇总",
+  "weekly_report_doc_url": "https://example.larkoffice.com/docx/XXXXXXXX",
   "output_format": "feishu",
   "auto_write_back": true,
   "ownership_labels": {

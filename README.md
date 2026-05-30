@@ -1,6 +1,6 @@
 # weekly-report-lark
 
-从飞书（Lark/Feishu）自动收集证据、生成结构化周报的 Claude Code Skill。
+从飞书（Lark/Feishu）自动收集证据、生成结构化周报的 AI Agent Skill。
 
 > **核心哲学**：周报不是写作问题，而是上下文收集问题。不要先写 prose，先收集证据，再分类，再归纳。
 
@@ -9,16 +9,17 @@
 ## 功能亮点
 
 - **自动收集证据**：从任务、日程、会议、聊天记录、近期编辑文档中自动拉取本周工作素材
+- **发现隐形工作**：把聊天里的技术判断、协调、排障、接口约定、后续跟进提炼成可被看见的周报条目
 - **项目维度组织**：不按时间流水账，而是按项目聚合多来源证据
 - **区分所有权**：明确标注"主导/参与/待跟进"，杜绝夸大
-- **基于证据**：没有聊天记录、任务或文档编辑支撑的事项，绝不编造
+- **基于证据**：没有聊天记录、任务、会议或文档编辑支撑的事项，绝不编造
 - **一键回写飞书**：生成后直接追加到你的周报汇总文档
 
 ---
 
 ## 前置依赖
 
-1. [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) 已安装并配置
+1. 支持本地 Skill 的 AI 编程/办公 Agent 已安装并配置
 2. `lark-cli` 已安装并在 PATH 中可用
 3. lark-cli 已完成飞书认证，至少具备以下权限：
    ```bash
@@ -33,7 +34,7 @@
 **零配置即可使用**，唯一要求是 `lark-cli` 已安装并完成飞书认证。
 
 ```bash
-# 1. 克隆或复制本 Skill 到 Claude Code 的 skills 目录
+# 1. 克隆或复制本 Skill 到你的 Agent skills 目录
 mkdir -p ~/.claude/skills/weekly-report-lark
 cp -r . ~/.claude/skills/weekly-report-lark/
 
@@ -47,19 +48,20 @@ cp config.example.json ~/.weekly-report-config/config.json
 
 ## 快速开始
 
-在 Claude Code 中直接说：
+在支持 Skill 的 Agent 中直接说：
 
 ```
 帮我写这周周报
 ```
 
-Claude 会自动：
+Agent 会自动：
 1. 检查 `lark-cli` 是否就绪
 2. 读取 `~/.weekly-report-config/config.json`（如有），否则使用默认配置
 3. 从飞书拉取本周证据
-4. 按项目归类、区分所有权
-5. 生成周报；如无目标文档，自动在飞书创建"周报汇总"文档并写入
-6. 把新文档的 URL 保存到 `~/.weekly-report-config/config.json`，下次直接复用
+4. 从聊天记录里补全没有进入任务系统的隐形工作
+5. 按项目归类、区分所有权
+6. 生成周报；如无目标文档，自动在飞书创建"周报汇总"文档并写入
+7. 把新文档的 URL 保存到 `~/.weekly-report-config/config.json`，下次直接复用
 
 ### 其他常用指令
 
@@ -94,8 +96,8 @@ cp config.example.json ~/.weekly-report-config/config.json
 
 ```json
 {
-  "weekly_report_doc_name": "我的周报汇总",
-  "weekly_report_doc_url": "https://your-org.larkoffice.com/docx/XXXXXXXX",
+  "weekly_report_doc_name": "周报汇总",
+  "weekly_report_doc_url": "https://example.larkoffice.com/docx/XXXXXXXX",
   "output_format": "feishu",
   "auto_write_back": true,
   "ownership_labels": {
@@ -141,12 +143,12 @@ cp config.example.json ~/.weekly-report-config/config.json
 
 ## 数据来源与优先级
 
-Skill 按以下顺序收集证据，证据充足时自动停止：
+Skill 按以下顺序做基础扫描，证据充足时停止深挖：
 
 1. **任务中心** — 已完成/进行中的任务（最干净的结构化信号）
 2. **日历/日程** — 推断协调工作量、评审/同步时间
 3. **会议纪要 & 待办** — 决策、后续行动、阻碍
-4. **聊天记录** — 补充不在任务中的重要进展
+4. **聊天记录** — 补充不在任务中的重要进展，尤其是方案决策、协调、排障和接口约定
 5. **近期编辑文档** — 直接产出证据，自动生成可点击链接
 
 ---
@@ -166,14 +168,16 @@ Skill 按以下顺序收集证据，证据充足时自动停止：
 | 找不到周报文档 | 无配置时 skill 会自动创建新文档。如创建失败，检查 `lark-cli` 的 docs 权限；也可手动创建文档后把 URL 写入 `~/.weekly-report-config/config.json`。 |
 | 文档搜索无结果 | 确认 auth scope 包含 `search:docs:read`。如缺失，降级为 tasks + calendar + meetings。 |
 | 会议纪要为空白 | 部分会议未开启自动纪要。尝试用 calendar + chat 补充该会议相关证据。 |
-| 生成的周报内容太少 | 可能是该周任务/会议较少，或 lark-cli 某些数据源返回为空。AI 会明确告知缺失了哪些来源。 |
+| 生成的周报内容太少 | 可能是该周任务/会议较少，或 lark-cli 某些数据源返回为空。Agent 会明确告知缺失了哪些来源。 |
+| 周报像会议流水账 | 检查是否按发言人、待办和文档编辑过滤了证据；只有参会但没有行动结果的内容应归为参与或省略。 |
+| 聊天结果噪音太多 | 优先用相关群聊、当前用户、时间范围过滤，再按主题归纳，不要直接复制聊天记录。 |
 | 项目分组不准确 | 在 `project-mapping.json` 中添加更多关键词映射，提升匹配精度。 |
 
 ---
 
 ## 自动化触发（进阶）
 
-你可以结合系统的 cron 或 Claude Code 的定时任务，实现"每周五下午 5 点自动生成周报草稿"。
+你可以结合系统的 cron 或 Agent 的定时任务，实现"每周五下午 5 点自动生成周报草稿"。
 
 ### macOS / Linux (cron)
 
@@ -183,9 +187,9 @@ crontab -e
 0 17 * * 5 cd /path/to/your/project && claude --skill weekly-report-lark "帮我写这周周报"
 ```
 
-### Claude Code Scheduled Tasks
+### Scheduled Tasks
 
-如果你使用 Claude Code Desktop 或支持 scheduled tasks 的环境：
+如果你使用支持 scheduled tasks 的环境：
 
 ```
 /schedule "每周五 17:00 自动生成周报草稿" /skill weekly-report-lark 帮我写这周周报
@@ -199,7 +203,7 @@ crontab -e
 
 ```
 weekly-report-lark/
-├── SKILL.md                       # Claude Code 使用的 Skill 定义（面向 AI）
+├── SKILL.md                       # Agent 使用的 Skill 定义（面向 AI）
 ├── README.md                      # 人类可读的项目说明（你正在阅读）
 ├── config.example.json            # 配置模板（复制到 ~/.weekly-report-config/）
 ├── project-mapping.example.json   # 项目映射模板（复制到 ~/.weekly-report-config/）

@@ -1,9 +1,9 @@
 ---
 name: weekly-report-lark
-description: Use when the user wants to generate a weekly report, weekly summary, standup recap, or work log from Lark/Feishu data. This skill is optimized for a personal recurring workflow: collect evidence from tasks, calendars, meetings, chat messages, and recently edited docs; organize by project; distinguish direct ownership from meeting participation; and append the result to a long-lived Feishu weekly report document.
+description: Use when the user asks to generate or update a weekly report, weekly summary, standup recap, or work log from Lark/Feishu tasks, calendar events, meeting notes, docs, or chat messages.
 ---
 
-# Personal Weekly Report From Lark
+# Weekly Report From Lark Evidence
 
 Use this skill to collect weekly work evidence through `lark-cli`, classify that evidence by project and ownership strength, then write a reusable weekly report.
 
@@ -12,7 +12,7 @@ Use this skill to collect weekly work evidence through `lark-cli`, classify that
 Weekly reports are not a writing problem first. They are a **context collection** problem first.
 
 Do not start by drafting prose.
-Start by collecting evidence from:
+Start by collecting evidence from work traces:
 
 - tasks
 - calendar events
@@ -21,6 +21,10 @@ Start by collecting evidence from:
 - recently edited docs
 
 Then classify. Then summarize.
+
+The most valuable weekly report often comes from **invisible work**: decisions made in chat, small technical clarifications, unblockings, handoffs, incident follow-ups, and alignment work that never became a formal task. Find those traces, but keep the final report grounded and professional.
+
+Never include raw private messages, secrets, access tokens, IP allowlists, internal incident details, or unnecessary personal names in the final report. Paraphrase work evidence into safe project-level bullets.
 
 ## Prerequisites Check
 
@@ -87,6 +91,8 @@ Read these first:
 
 This skill only supports **user identity**.
 
+Do not use bot identity for weekly reports. Bot identity usually cannot see the user's personal tasks, calendar, private docs, or chat history correctly.
+
 Minimum likely auth:
 
 ```bash
@@ -140,7 +146,7 @@ If the target document is unavailable and creation fails, or if `auto_write_back
 
 ## Data Sources
 
-Use sources in this order. Stop when evidence is sufficient; do not collect noise just because a source exists.
+Use sources in this order. Do a lightweight pass across the main sources, including chat, then stop deeper collection when evidence is sufficient. Do not collect noise just because a source exists.
 
 ### 1. Tasks
 
@@ -153,10 +159,15 @@ Tasks are the cleanest structured signal for:
 Preferred command:
 
 ```bash
-lark-cli task +get-my-tasks --page-all
+lark-cli task +get-my-tasks --page-all --format json
 ```
 
-If the range needs filtering, prefer due-date-bounded queries and then summarize only tasks relevant to the requested week.
+Task lists can include old backlog items. After fetching, filter locally:
+
+- keep tasks created, updated, completed, or due inside the requested range
+- keep stale tasks only when another source this week references the same topic
+- ignore personal, vague, or old backlog items that have no current-week signal
+- do not treat an old incomplete task as work completed this week
 
 ### 2. Calendar / Standup Signals
 
@@ -178,7 +189,7 @@ Use meeting search + notes when meetings are likely a major part of the week:
 
 ```bash
 lark-cli vc +search --start "<YYYY-MM-DD>" --end "<YYYY-MM-DD>" --format json --page-size 30
-lark-cli vc +notes --meeting-ids "id1,id2,..."
+lark-cli vc +notes --meeting-ids "id1,id2,..." --format json
 ```
 
 Use meeting notes to extract:
@@ -188,23 +199,31 @@ Use meeting notes to extract:
 - blockers surfaced
 - meeting todos that point to the user or to the user's owned projects
 
+When `vc +notes` returns `note_doc_token`, fetch the note body before summarizing:
+
+```bash
+lark-cli docs +fetch --api-version v2 --doc "<note_doc_token>" --doc-format markdown --format json
+```
+
+If `--doc-format text` fails for meeting notes, retry with `markdown`. If note fetching still fails, fall back to the meeting title, shared doc titles, todos, and related chat messages.
+
 Do not turn every meeting into a weekly-report bullet. Only keep meetings that changed work.
 
 ### 4. Chat Messages
 
-Use message search when important progress lives in chat instead of tasks.
+Use message search because important progress often lives only in chat.
 
 Preferred approach:
 
 1. find relevant chat(s)
-2. search messages
+2. search messages from the current user in the requested range
 3. paginate exhaustively
 
 Example:
 
 ```bash
 lark-cli im +chat-search --query "<chat keyword>" --format json
-lark-cli im +messages-search --query "" --chat-id <chat_id> --start "<ISO8601>" --end "<ISO8601>" --page-size 50 --page-all --format json
+lark-cli im +messages-search --query "" --chat-id <chat_id> --sender <current_user_open_id> --start "<ISO8601>" --end "<ISO8601>" --page-size 50 --page-all --format json
 ```
 
 Rules:
@@ -213,6 +232,18 @@ Rules:
 - Always prefer `--page-all` for report tasks
 - Narrow with `--chat-id`, `--sender`, `--start`, `--end` before paginating
 - Group by topic, not by raw chronology
+- Use meeting titles, project names, doc titles, and `project-mapping.json` keywords to find relevant chats
+- Run at least one sender-limited message search for weekly reports; do not skip chat solely because tasks or meetings exist
+- Treat private chats as supporting evidence only when clearly work-related
+- Do not quote raw chat unless the user explicitly asks; paraphrase into work-safe bullets
+
+High-signal chat evidence includes:
+
+- the user made or clarified a technical decision
+- the user defined an interface, API contract, schema, event, state machine, or handoff rule
+- the user coordinated owners, next steps, risk handling, or release timing
+- the user debugged, unblocked, or followed up on an incident
+- the user pointed to a concrete doc, PR, dashboard, test result, or runbook
 
 ### 5. Recently Edited Docs
 
@@ -226,10 +257,12 @@ lark-cli docs +search --as user --query "" --filter '{"sort_type":"EDIT_TIME"}' 
 
 Rules:
 
-- filter by `edit_user_id == current user`
-- prefer docs edited during the requested period
+- get the current user's `userOpenId` from `lark-cli auth status`
+- filter by `edit_user_id == userOpenId`
+- prefer docs whose `update_time` is inside the requested period
 - use recent docs as evidence of direct ownership, not just awareness
 - if a doc was only opened or mentioned but not edited by the user, do not count it as direct output
+- if the user owns a doc but another person edited it this week, count it as project context unless other evidence shows direct user contribution
 
 When a relevant doc needs to be cited in the final report, use its real Feishu URL so the final document renders as clickable linked text.
 
@@ -241,13 +274,14 @@ Follow this order:
 2. collect tasks
 3. collect calendar context
 4. collect meetings and meeting todos
-5. collect chat messages if tasks + meetings are insufficient
-6. collect recently edited docs
-7. merge evidence by project
-8. classify each item by ownership strength
-9. draft the weekly report
-10. ensure target document exists (read from config; if missing, create via `lark-cli docs +create` and persist URL to config)
-11. write back to the weekly report doc unless the user asked for chat-only output
+5. fetch meeting note bodies when note tokens exist
+6. collect sender-limited chat messages from relevant chats
+7. collect recently edited docs
+8. merge evidence by project
+9. classify each item by ownership strength
+10. draft the weekly report
+11. ensure target document exists (read from config; if missing, create via `lark-cli docs +create` and persist URL to config)
+12. write back to the weekly report doc unless the user asked for chat-only output
 
 ## Ownership Classification
 
@@ -267,6 +301,7 @@ Put an item into **我主导/负责的** only when there is evidence such as:
 - the user owns the follow-up action
 - the user drove alignment, planning, testing, rollout, or integration
 - the user produced a concrete artifact, schedule, report, or technical clarification
+- the user's chat messages define a technical contract, decision, integration path, incident diagnosis, or handoff rule that others rely on
 
 Put an item into **我参与评审/同步的** when:
 
@@ -284,6 +319,8 @@ Put an item into **后续需要我跟进的** when:
 Do **not** write a meeting-attendance item as direct output.
 
 If the user only attended a content-creation or strategy meeting and did not own resulting work, write it as participation or omit it if it is low signal.
+
+When evidence conflicts, choose the weaker bucket and mention uncertainty briefly in the draft.
 
 ## Project Grouping Rules
 
@@ -317,6 +354,8 @@ Required rules:
 - separate direct ownership from participation
 - mention blockers and follow-ups clearly
 - compress repetitive low-signal tasks
+- turn chat evidence into outcome-oriented bullets: "clarified X", "defined Y", "coordinated Z", "unblocked W"
+- remove sensitive implementation details unless they are necessary and safe for the target weekly report audience
 - keep the tone plain and professional
 
 ## Default Output Structure
@@ -384,6 +423,9 @@ When there are too many raw items:
 | Doc write fails (403/404) | Fall back to chat-only output. Preserve the structured Markdown so the user can copy-paste manually. |
 | Doc search returns nothing | If `search:docs:read` scope is missing, continue with tasks + calendar + meetings + messages. |
 | Meeting notes are empty | Some meetings lack auto-transcription. Use calendar events and related chat messages as fallback evidence. |
+| Meeting note fetch fails | Retry `docs +fetch --api-version v2` with `--doc-format markdown`; if it still fails, use note metadata and shared docs only. |
+| Task list is too noisy | Filter tasks locally by requested date range and corroborate stale tasks with meetings, docs, or messages. |
+| Chat search is too noisy | Search relevant chats first, then restrict by `--sender`, `--chat-id`, `--start`, and `--end`; summarize by topic instead of dumping messages. |
 | Ownership classification is ambiguous | Default to the weaker bucket. Prefer "participate" over "lead" when evidence is inconclusive. |
 | Project grouping is inaccurate | Refer to `project-mapping.json` mappings. If no keyword matches, use AI inference but err on the side of broader project names. |
 

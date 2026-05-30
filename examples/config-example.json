@@ -1,5 +1,5 @@
 {
-  "weekly_report_doc_name": "张三年度周报汇总",
+  "weekly_report_doc_name": "年度周报汇总",
   "weekly_report_doc_url": "https://example.larkoffice.com/docx/AbCdEfGh123456789",
   "output_format": "feishu",
   "auto_write_back": true,
